@@ -70,8 +70,21 @@ http.createServer(function (req, res) {
 				
 			} else {
 				// load reports
-				var path = "data/"+fileName+".txt"
-				fs.readFile(path, function(err, data){
+				var dataDir = "data/"
+				var path = dataDir+fileName+".txt"
+				if (!fs.existsSync(dataDir)){
+					fs.mkdirSync(dataDir);
+				}
+				fs.readFile(path, 'utf8', (err, data) => {
+					if (err) {
+						if (err.code === 'ENOENT') {
+							console.error('data does not exist');
+							response500("Cannot find data file: " + path);
+							return;
+						}
+						throw err;
+					}
+					
 					console.log("Get Data File from '" + path + "', bytes: " + data.length)
 					
 					if (reportName.contains("incChart")) {
