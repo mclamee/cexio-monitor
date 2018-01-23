@@ -1,0 +1,26 @@
+{
+  "name": "cexio-monitor",
+  "version": "1.0.0",
+  "description": "CEX.io Balance Monitor",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "npm install",
+    "prestart": "npm run build",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mclamee/cexio-monitor.git"
+  },
+  "author": "William Zhang",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/mclamee/cexio-monitor/issues"
+  },
+  "homepage": "https://github.com/mclamee/cexio-monitor#readme",
+  "dependencies": {
+    "websocket": "1.0.23",
+    "chart.js": "2.7.1"
+  }
+}

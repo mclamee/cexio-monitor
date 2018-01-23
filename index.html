@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset='utf-8'>
+	<title>Cex.io Balance Board</title>
+	
+	<script src="https://code.jquery.com/jquery-3.2.1.min.js"
+	  integrity="sha256-hwg4gsxgFZhOsEEamdOYGBf13FyQuiTwlAQgxVSNgt4="
+	  crossorigin="anonymous"></script>
+	<script src="resources/chart.js/Chart.js"></script>
+
+	<style>
+	.his-chart {
+	   width: 50%;
+	   height: 330px;
+	}
+	
+	#wrap {
+		width: 90%;
+		padding: 15px;
+	}
+	
+	#myProgress {
+		width: 100%;
+		background-color: #ddd;
+	}
+
+	#myBar {
+		width: 100%;
+		height: 2px;
+		background-color: #4CAF50;
+		float: left;
+		position: fixed;
+		top: 0;
+		left: 0;
+	}
+	
+	</style>
+
+</head>
+<body>
+<script>
+	const APP = {
+		name: "{{app.name}}",
+		author: "{{app.author}}",
+		currencies : ["btc", "eth", "xrp"],
+		heartbeat: 10 * 1000,
+		chart: {
+			frequency: "Every60mins",
+			increaseLastHours: 24 * 5,
+			currencyLastHours: 24,
+		},
+		priceURL: "https://cex.io/api/last_price/",
+		fixerURL: "https://api.fixer.io/latest?symbols=CNY&base=USD",
+		saveDataURL: "/data/save/urlData"
+	}
+	
+	$(document).ready(function(){
+		registerCharts();
+		refreshAll();
+	});
+	
+	function refreshAll(){
+		move();
+		recalculate();
+		refreshCharts();
+	}
+	
+	var timer; // global level heartbeat
+	function recalculate(){
+		// stop timer
+		clearTimeout(timer);
+	
+		var check = [];
+		APP.currencies.forEach((v) => {
+			$.ajax({
+				type: "get",
+				url: APP.priceURL + v.toUpperCase() + "/USD",
+				data: {},
+				success: function(data){
+					$("#"+v+"-price").html(data.lprice);
+					$("#"+v+"-usd").html(data.lprice * parseFloat($("#"+v+"-avail").html()));
+					check.push(v);
+					calcTotal();
+				},
+				dataType: "json"
+			});  
+		});
+	  
+		function calcTotal(){
+			if(check.length == APP.currencies.length){
+				var total = 0.0;
+				check.forEach(v => {
+					total += parseFloat($("#" + v + "-usd").html());
+				});
+				check = [];
+				
+				var totalMarket = total;
+				$("#total-market").html(total.toFixed(2));
+				
+				var usdBalance = parseFloat($("#usd-avail").html());
+				total += usdBalance;
+				
+				$("#total-USD").html(total);
+				$("#total-USD-fixed").html(total.toFixed(2));
+				
+				var totalDeposit = parseFloat($("#total-deposit").html());
+				$("#total-deposit-fixed").html(totalDeposit.toFixed(2));
+				
+				var marketBase =  totalDeposit - usdBalance;
+				$("#market-base").html(marketBase.toFixed(2));
+				
+				var incUsd = total-totalDeposit;
+				$("#increase-USD").html(incUsd.toFixed(2));
+				$("#increase-USD-fixed").html(incUsd.toFixed(2));
+				
+				var inc = 100*(incUsd)/totalDeposit;
+				$("#total-increase").html(inc.toFixed(2));
+				
+				var marketInc = 100*(totalMarket - marketBase)/marketBase;
+				$("#market-increase").html(marketInc.toFixed(2));
+				
+				$.ajax({
+				  type: "get",
+				  url: APP.fixerURL,
+				  data: {},
+				  success: function(data){
+				    var tUsd = parseFloat($("#total-USD").html());
+					var tDep = parseFloat($("#total-deposit").html());
+					var cny = tUsd * parseFloat(data.rates.CNY)
+					
+					var incCny = (tUsd - tDep) * parseFloat(data.rates.CNY)
+					$("#increase-CNY").html(incCny.toFixed(2));
+
+					$("#total-CNY").html(cny.toFixed(2));
+					$("#total-CNY-date").html(data.rates.CNY + " @" + data.date);
+					
+					// after all data refreshed, save incremental data for reports
+					saveIncrementalData()
+				  },
+				  dataType: "json"
+				});
+			}
+		}
+		
+		function saveIncrementalData(){
+			var url = APP.saveDataURL
+				+"?lastTotal="+getVal("total-USD")
+				+"&base="+getVal("total-deposit")
+				+"&inc="+getVal("total-increase")
+				+"&totalCNY="+getVal("total-CNY")
+				+"&btcUSD="+getVal("btc-usd")
+				+"&ethUSD="+getVal("eth-usd")
+				+"&xrpUSD="+getVal("xrp-usd");
+			
+			$.ajax({
+			  type: "post",
+			  url: url,
+			  data: {},
+			  success: function(data){
+				console.log("Saved url data " + data.m);
+			  },
+			  complete: function(){
+				// after data saved, setup next heartbeat
+				timer = setTimeout(function(){
+					refreshAll();
+				}, APP.heartbeat);
+			  },
+			  dataType: "json"
+			});
+		}
+	}
+  
+  
+	function MyChart(title, id, url, fnGetData, fnGetLabels, httpMethod = "get", postData = {}){
+		this.title = title;
+		this.id = id;
+		this.url = url;
+		this.fnGetData = fnGetData;
+		this.fnGetLabels = fnGetLabels;
+		this.httpMethod = httpMethod;
+		this.postData = postData;
+		
+		this.ctx = document.getElementById(id);
+		
+		this.myChart;
+		this.data = [];
+		this.xAxisID;
+		this.yAxisID;
+		this.labels = [];
+	}
+	
+	MyChart.prototype = {
+		refresh : function(){
+			var that = this;
+			//console.log("URL" + that.url + ":::" + JSON.stringify(that.postData))
+			$.ajax({
+			  type: that.httpMethod,
+			  url: that.url,
+			  data: that.postData,
+			  success: function(data){
+
+			  that.data = that.fnGetData(data);
+
+				// setup data keys
+				//that.xAxisID = "x";
+				//that.yAxisID = "y";
+				//if(that.data[0]){
+				//	var keys = Object.keys(that.data[0]);
+				//	if(keys[0] && keys[1]){
+				//		that.xAxisID = keys[0];
+				//		that.yAxisID = keys[1];
+				//	}
+				//}
+				//console.log("XY KEYS: ", that.xAxisID, that.yAxisID);
+				
+				that.labels = that.fnGetLabels(data);
+				//console.log(that.labels)
+				
+				that.drawChart();
+			  },
+			  dataType: "json"
+			});
+		},
+		
+		drawChart : function(){
+			var that = this;
+			
+			if(!that.myChart){
+				that.myChart = new Chart(that.ctx, {
+					type: 'line',
+					data: {
+						labels: that.labels,
+						datasets: [{
+							//xAxisID: that.xAxisID,
+							//yAxisID: that.yAxisID,
+							label: that.title,
+							backgroundColor: "red",
+							borderColor: "red",
+							data: that.data,
+							fill: false,
+						}]
+					},
+					options: {
+						scales: {
+							xAxes: [{
+								ticks: {
+									//beginAtZero:true
+								}
+							}],
+							yAxes: [{
+								ticks: {
+									//beginAtZero:true
+								}
+							}]
+						}
+					}
+				});
+			}else{
+				console.log("updated!")
+				that.myChart.update({
+					duration: 0
+				});
+			}
+		}
+	}
+  
+	var charts = []; // global Chart Store
+	
+	function registerCharts(){
+		// 1
+		function getIncChartData(data){
+			console.log(JSON.stringify(data));
+			return data;
+		}
+		function getIncChartLabels(data){
+			var lbs = []
+			data.forEach((v) => {
+				lbs.push(new Date(parseInt(v.x)).toJSON().substring(0,16).replace("T", " "))
+			});
+			console.log(JSON.stringify(lbs));
+			return lbs;
+		}
+		var hisChart = new MyChart(APP.chart.increaseLastHours + "H Increase Chart", "his-chart"
+		, "data/urlData/incChart" + APP.chart.frequency + "?lastHours=" + APP.chart.increaseLastHours
+		, getIncChartData, getIncChartLabels, "post");
+		charts.push(hisChart);
+		
+		// 2
+		APP.currencies.forEach(c => {
+			charts.push(createCurrencyChart(c));
+		})
+		
+		function createCurrencyChart(currency){
+			return new MyChart(
+			APP.chart.currencyLastHours + "H " + currency.toUpperCase(), currency.toLowerCase() + "-chart", "https://cex.io/api/price_stats/"+currency.toUpperCase()+"/USD/"
+			, function(data){
+				data = data.reduce((list, obj) => {
+					var map = {};
+					map.x = parseInt(obj.tmsp);
+					map.y = parseFloat(obj.price);
+					list.push(map)
+					return list;
+				}, []);
+				//console.log("converted: " + JSON.stringify(data));
+				return data;
+			}
+			, function(data){
+				var lbs = []
+				data.forEach((v) => {
+					var d = new Date();
+					d.setTime(v.tmsp * 1000)
+					lbs.push(d.toJSON().substring(0,16).replace("T", " "))
+				});
+				return lbs;
+			}
+			, "post"
+			, { 
+				"lastHours": APP.chart.currencyLastHours, 
+				"maxRespArrSize": 100 
+			})
+		}
+	}
+	
+	function refreshCharts(){
+		for(var idx in charts){
+			var chart = charts[idx];
+			chart.refresh();
+		}
+	}
+	
+	function getVal(id) {return parseFloat($("#"+id).html())}
+</script>
+
+<script>
+function move() {
+  var elem = document.getElementById("myBar");   
+  var width = 100;
+  elem.style.width = width + '%';
+  
+  var id = setInterval(frame, 1000);
+  function frame() {
+    if (width <= 1) {
+      clearInterval(id);
+    } else {
+      width = width - (100/APP.heartbeat * 1000)/1; 
+      elem.style.width = width + '%'; 
+    }
+  }
+}
+</script>
+<div id="myProgress">
+  <div id="myBar"></div>
+</div> 
+
+<div id="wrap">
+	<div>Hello {{username}},<div>
+	<br/>
+	<div>Your Ref: <a href="https://cex.io/r/0/up110325431/0/">https://cex.io/r/0/up110325431/0/</a> Short Ref: <a href="http://t.cn/RTOP1yG">http://t.cn/RTOP1yG</a><div>
+
+	<hr/>
+	<p id="btc">BTC: <span id="btc-avail">{{BTC.available}}</span> * $<span id="btc-price">?</span> = $<span id="btc-usd">?</span></p>
+	<p id="eth">ETH: <span id="eth-avail">{{ETH.available}}</span> * $<span id="eth-price">?</span> = $<span id="eth-usd">?</span></p>
+	<p id="xrp">XRP: <span id="xrp-avail">{{XRP.available}}</span> * $<span id="xrp-price">?</span> = $<span id="xrp-usd">?</span></p>
+	<p id="usd">USD: <span id="usd-avail">{{USD.available}}</span> * $<span id="usd-price">1.00</span> = $<span id="usd">{{USD.available}}</span></p>
+
+	<hr/>
+	<p>Total Value: $<span id="total-USD">?</span>
+	<p>Total Base: $<span id="total-deposit">{{total-deposit}}</span> <a id="edit-total-deposit" href="/deposits/edit">Edit</a>
+	<p>Total Increased: <span id="total-increase">?</span>% (+ $<span id="increase-USD">?</span>)</p>
+	<p>Total Value CNY: &yen;<span id="total-CNY">?</span> (+ &yen;<span id="increase-CNY">?</span>) [<span id="total-CNY-date">?</span>]</p>
+
+	<hr/>
+	<p>Market Value: $<span id="total-market">?</span> ($<span id="total-USD-fixed">?</span> - $<span>{{USD.available}}</span>)</p>
+	<p>Market Base: $<span id="market-base">?</span> ($<span id="total-deposit-fixed">?</span> - $<span>{{USD.available}}</span>)</p>
+	<p>Market Increased: <span id="market-increase">?</span>% (+ $<span id="increase-USD-fixed">?</span>)</p>
+
+	<hr/>
+	<div class="his-chart"><canvas id="his-chart" ></canvas></div>
+
+	<hr/>
+	<div class="his-chart"><canvas id="btc-chart" ></canvas></div>
+	<div class="his-chart"><canvas id="eth-chart" ></canvas></div>
+	<div class="his-chart"><canvas id="xrp-chart" ></canvas></div>
+</div>
+
+</body>
+</html>

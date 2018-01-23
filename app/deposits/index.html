@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset='utf-8'>
+	<title>Deposit History</title>
+	
+	<script src="https://code.jquery.com/jquery-3.2.1.min.js"
+	  integrity="sha256-hwg4gsxgFZhOsEEamdOYGBf13FyQuiTwlAQgxVSNgt4="
+	  crossorigin="anonymous"></script>
+	
+	<style>
+		li.nostyle {
+			list-style-type: none;
+		}
+	</style>
+	
+	<script>
+		$(document).ready(function(){
+			function reload(){
+				$.ajax({
+				  type: "get",
+				  url: "list",
+				  success: function(data){
+					var his = data
+					
+					console.log("Reloading ... ", his)
+					
+					var list = his.reduce((a, x) => {
+						var btnDel = "<button class='a-del' seq='"+x.id+"'>&times;</button>";
+						return a += ("<li class=''>"+btnDel+" Date: " + x.depDate + " Amount: $" + x.amt.toFixed(2) +" Fee: $" + x.fee.toFixed(2) + "</li>")
+					}, "")
+					
+					$("#his-list").html(list);
+					
+					$(".a-del").off('click').on('click', function(){
+						var id = $(this).attr("seq");
+						$.ajax({
+							type: "delete",
+							url: id
+						}).done(function(){
+							reload();
+						});
+					});
+					
+					$.get({
+						url: "sum",
+						dataType: "json"
+					}).done(function(data){
+						$("#total").text(data.total.toFixed(2));
+					})
+				  },
+				  dataType: "json"
+				});
+				
+				// set default values:
+				$("#input-depositDate")[0].valueAsDate = new Date();
+			}
+			
+			reload();
+
+			$("#form-save").submit(function(e){
+				e.preventDefault(); // <-- add this
+				
+				if(!this.checkValidity()){
+					alert("Please input a valid date and amount!");
+				} else {
+					var data = $(this).serialize();
+					console.log("data: " + data)
+					var url = $(this).attr("action");
+					$.post({
+					  url: url,
+					  data: data
+					}).done(function(d){
+						reload();
+						$("#form-save")[0].reset()
+					});
+				}
+			});
+			
+			$("#btn-add").click(function(){
+				console.log("Saving data ...")
+				$("#form-save").submit();
+			});
+			
+			$('#input-amount').on('input', function() {
+				var amt = parseFloat($(this).val());
+				
+				function ceil(x){
+					return (Math.ceil(x * 100) / 100)
+				}
+				
+				if(amt > 0){
+					$("#input-fee").val(ceil((0.25 + amt) / (1 - 0.035) - amt));
+				} else if(amt < 0){
+					$("#input-fee").val(ceil(3.80 + 0.0 * amt));
+				} else {
+					$("#input-fee").val(0.00);
+				}
+			});
+		});
+	</script>
+</head>
+<body>
+	
+	<h2>Deposit History</h2>
+	<hr/>
+	
+	<label>Total Amount: </label> $<span id="total"></span>
+	
+	<h5>Transactions: </h5>
+	<ol id="his-list"></ol>
+	<hr/>
+	<form id="form-save" action="save">
+		<div>
+			<label>Deposit Amount: </label><input type="number" id="input-amount" name="amount" step="0.01" placeholder="0.00" required="required"/>
+			<label>Fee: </label><input type="number" id="input-fee" name="fee" step="0.01" placeholder="0.00" required="required" value="0.00"/>
+			<label>Date: </label><input type="date" id="input-depositDate" name="depositDate" required="required"/>
+		</div>
+		<div></div>
+		<div><button id="btn-add" type="button">Add</button></div>
+	</form>
+</body>
+</html>
