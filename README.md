@@ -10,3 +10,11 @@ Supported currencies:
 4. XRP
 
 ![chart view](https://raw.githubusercontent.com/mclamee/cexio-monitor/master/image.png)
+
+
+----
+### Usage
+- Install [node.js](https://nodejs.org)
+- Clone project
+- Run below command:
+> npm start
